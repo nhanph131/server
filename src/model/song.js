@@ -1,45 +1,41 @@
 import mongoose from "mongoose";
 
 const SongSchema = new mongoose.Schema({
-    song_title: {
+    title: {
         type: String,
         required: true,
     },
-    artist_id: {
-        type: String,
-        default: ""
-    },
-    album_id: {
+    description: {
         type: String,
     },
-    genre_id: {
+    category: {
         type: String,
     },
-    duration: {
+    imgUrl: {
         type: String,
     },
-    file_path: {
+    trackUrl: {
         type: String,
+        required: true,
     },
-    cover_image: {
-        type: String,
-    },
-    lyrics: {
-        type: String,
-    },
-    release_date: {
-        type: String,
-    },
-    views: {
+    countLike: {
         type: Number,
         default: 0,
     },
-    likes: {
+    countPlay: {
         type: Number,
         default: 0,
+    },
+    uploader: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+    },
+    isDeleted: {
+        type: Boolean,
+        default: false,
     }
 }, {
-    timestamps: true, 
+    timestamps: true,
     versionKey: false
 });
 
