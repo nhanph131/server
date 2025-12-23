@@ -1,11 +1,12 @@
 // Viet cac cau lenh get, post, put, delete
 import express from "express";
-import { getSongs, getSongById } from "../controllers/songController.js";
+import { getSongs, getSongById, getCommentsBySongId } from "../controllers/songController.js";
 import { getHomeData } from "../controllers/homeController.js"; 
 const songRouter = express.Router();
 
 songRouter.get("/songs", getSongs);
 songRouter.get("/song/:id", getSongById);
+songRouter.get("/song/:id/comments", getCommentsBySongId);
 songRouter.get("/songs/home", getHomeData); 
 // songRouter.get("/song/:slug", (req, res) => {
 //     console.log("slug", req.params.slug);

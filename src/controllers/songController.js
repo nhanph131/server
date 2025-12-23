@@ -1,6 +1,7 @@
 // Viet cac phuong thuc get, post, put, delete
 import Song from "../model/song";
 import User from "../model/user"; // Import User model for population
+import Comment from "../model/comment";
 
 export const getSongs = async (req, res) => {
     try {
@@ -35,6 +36,21 @@ export const getSongById = async (req, res) => {
         res.status(200).json({
             statusCode: 200,
             message: "Get Song Detail Success",
+            data: data
+        });
+    } catch (error) {
+        res.status(500).json({message: error.message});
+    }
+};
+
+export const getCommentsBySongId = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const data = await Comment.find({ track: id }).populate("user", "_id name imgUrl");
+        
+        res.status(200).json({
+            statusCode: 200,
+            message: "Get Comments Success",
             data: data
         });
     } catch (error) {

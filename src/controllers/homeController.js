@@ -24,8 +24,12 @@ export const getHomeData = async (req, res) => {
     const topSongs = [...cleanSongs].sort((a, b) => (b.countPlay || 0) - (a.countPlay || 0)).slice(0, 6);
     
     return res.status(200).json({
-      topSongs: topSongs,
-      allSongs: cleanSongs
+      statusCode: 201,
+      message: "Get topSong and allSong",
+      data: {
+        topSongs: topSongs,
+        allSongs: cleanSongs
+      }
     });
 
   } catch (error) {
