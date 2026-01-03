@@ -11,7 +11,14 @@ export const getHomeData = async (req, res) => {
 
     // 2. Nếu không có bài nào -> Trả về rỗng chứ KHÔNG báo lỗi
     if (!songs || songs.length === 0) {
-        return res.status(200).json({ topSongs: [], allSongs: [] });
+        return res.status(200).json({
+            statusCode: 201,
+            message: "Not data",
+            data: {
+              topSongs: [],
+              allSongs: []
+            }
+          });
     }
 
     // 3. Xử lý dữ liệu (đề phòng lỗi null)
@@ -25,7 +32,7 @@ export const getHomeData = async (req, res) => {
     
     return res.status(200).json({
       statusCode: 201,
-      message: "Get topSong and allSong",
+      message: "Get data success",
       data: {
         topSongs: topSongs,
         allSongs: cleanSongs

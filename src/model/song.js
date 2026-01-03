@@ -39,4 +39,4 @@ const SongSchema = new mongoose.Schema({
     versionKey: false
 });
 
-export default mongoose.model("Song", SongSchema);
+export default mongoose.models.Song || mongoose.model("Song", SongSchema);

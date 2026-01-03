@@ -24,4 +24,4 @@ const FavoriteSchema = new mongoose.Schema({
     versionKey: false
 });
 
-export default mongoose.model("Favorite", FavoriteSchema);
+export default mongoose.models.Favorite || mongoose.model("Favorite", FavoriteSchema);

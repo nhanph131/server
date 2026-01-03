@@ -38,3 +38,22 @@ export const getListeningHistory = async (req, res) => {
     res.status(500).json({ message: "Lỗi Server" });
   }
 };
+
+export const clearUserHistory = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+        const result = await History.updateMany(
+            { user: userId, isDeleted: false },
+            { $set: { isDeleted: true } }
+        );
+
+        return res.status(200).json({
+            message: "History cleared",
+            modifiedCount: result.modifiedCount ?? result.nModified ?? 0
+        });
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
+};
