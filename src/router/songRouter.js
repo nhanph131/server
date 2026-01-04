@@ -8,7 +8,9 @@ import {
     unlikeSong,
     uploadSongs,
     updateCover,
-    updateSongInfo
+    updateSongInfo,
+    getSongsByUploader,
+    deleteSong
 } from "../controllers/songController.js";
 import { getHomeData } from "../controllers/homeController.js"; 
 import { verifyToken } from "../middleware/authMiddleware.js";
@@ -20,42 +22,47 @@ import { dirname } from "path";
 import Song from "../model/song.js"; // Import model Song for line 89
 
 const songRouter = express.Router();
-
-// ... (Giữ nguyên phần cấu hình Multer Audio & Image y hệt cũ) ...
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Config lưu file MP3
+// ============================================================
+// 1. CONFIG MULTER (Nơi lưu file)
+// ============================================================
+
+// A. Lưu nhạc -> vào folder 'filemp3'
 const audioStorage = multer.diskStorage({
   destination: (req, file, cb) => {
+    // Từ router lùi 2 cấp (src -> server) rồi vào filemp3
     const dir = path.join(__dirname, "../../filemp3"); 
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    const name = Date.now() + "-" + Math.round(Math.random() * 1e9) + ext;
-    cb(null, name);
+    cb(null, Date.now() + "-" + Math.round(Math.random() * 1e9) + ext);
   },
 });
 const uploadAudio = multer({ storage: audioStorage });
 
-// Config lưu ảnh Cover
+// B. Lưu ảnh -> vào folder 'images' (Khớp với app.js)
 const imageStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(__dirname, "../../uploads/covers");
+    const dir = path.join(__dirname, "../../images"); 
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    const name = Date.now() + "-" + Math.round(Math.random() * 1e9) + ext;
-    cb(null, name);
+    cb(null, Date.now() + "-" + Math.round(Math.random() * 1e9) + ext);
   },
 });
 const uploadImage = multer({ storage: imageStorage });
 
-// --- ROUTES ---
+// ============================================================
+// 2. ROUTES (API)
+// ============================================================
+
+// --- GET Routes ---
 songRouter.get("/songs", getSongs);
 songRouter.get("/song/:id", getSongById);
 songRouter.get("/songs/home", getHomeData); 
@@ -75,47 +82,23 @@ songRouter.delete("/song/:id/like", verifyToken, unlikeSong);
 // songRouter.delete("/song", (req, res) => {
 //     res.send("Hello World!");
 // });
+songRouter.get("/users/:id/songs", getSongsByUploader); // Lấy nhạc của user
 
-// ❌ ĐÃ XÓA ROUTE SEARCH Ở ĐÂY ĐỂ CHUYỂN SANG searchRouter
-
+// --- UPLOAD Routes ---
+// Upload nhiều file nhạc
 songRouter.post("/upload", uploadAudio.array("files", 10), uploadSongs);
+
+// Upload ảnh bìa (Cover) cho 1 bài hát
 songRouter.post("/songs/:id/cover", uploadImage.single("cover"), updateCover);
-songRouter.put("/songs/:id", updateSongInfo);
+
+// --- CRUD Routes ---
+// Thêm bài hát (JSON only, nếu dùng form data thì dùng route upload trên)
 songRouter.post("/songs", addSong); 
-songRouter.post('/songs', async (req, res) => {
-  try {
-    const newSong = new Song(req.body);
-    // Lưu ý: req.body cần chứa: title, description, imgUrl, trackUrl...
-    // và uploader (ID của admin đang đăng nhập)
-    await newSong.save();
-    res.status(201).json(newSong);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
-// 2. UPDATE SONG (Sửa thông tin bài hát)
-songRouter.put('/songs/:id', async (req, res) => {
-  try {
-    const updatedSong = await Song.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
-    res.json(updatedSong);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// Cập nhật thông tin bài hát (Title, Artist...)
+songRouter.put("/songs/:id", updateSongInfo);
 
-// 3. DELETE SONG (Xóa bài hát)
-songRouter.delete('/songs/:id', async (req, res) => {
-  try {
-    await Song.findByIdAndUpdate(req.params.id, { isDeleted: true });
-    res.json({ message: "Song deleted successfully" });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// Xóa bài hát (Xóa cả file vật lý và DB)
+songRouter.delete("/songs/:id", deleteSong);
 
 export default songRouter;

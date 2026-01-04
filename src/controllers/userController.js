@@ -298,55 +298,52 @@ export const getUserPlaylists = async (req, res) => {
   }
 };
 
+
+
+/* ================= GET HISTORY (Lấy lịch sử nghe của User) ================= */
+// Hàm này được merge từ nhánh conflict và đổi tên cho đúng chức năng
 export const getListeningHistory = async (req, res) => {
   try {
-    // 1. Lấy ID user từ token (đảm bảo request đã qua middleware xác thực)
-    const userId = req.user?._id;
+    // 1. Lấy ID user từ token
+    const userId = req.user?._id || req.user?.id;
 
     if (!userId) {
         return res.status(401).json({ message: "Vui lòng đăng nhập để xem lịch sử." });
     }
 
     // 2. Tìm dữ liệu lịch sử
-    const history = await History.find({ user: userId, isDeleted: false }) // Chỉ lấy của user hiện tại
+    const history = await History.find({ user: userId, isDeleted: false })
       .populate({
-        path: 'track', // QUAN TRỌNG: Trong Schema bạn đặt tên là 'track', không phải 'song_id'
-        select: 'title imgUrl countPlay countLike uploader', // Chỉ lấy các trường cần dùng
+        path: 'track', 
+        select: 'title imgUrl countPlay countLike uploader trackUrl', 
         populate: { 
-          path: 'uploader', // Từ Song -> User để lấy tên ca sĩ
-          select: 'username' // Chỉ lấy username
+          path: 'uploader', 
+          select: 'username' 
         }
       })
-      .sort({ listenedAt: -1 }) // Sắp xếp theo thời gian nghe (trong Schema là listenedAt)
-      .limit(20) // Lấy 20 bài gần nhất (tăng lên 1 chút để danh sách đẹp hơn)
-      .lean(); // Dùng lean() để convert Mongoose Document sang Object JS thuần (nhanh hơn)
+      .sort({ listenedAt: -1 })
+      .limit(20)
+      .lean();
 
-    // 3. Xử lý dữ liệu trả về cho Frontend
+    // 3. Xử lý dữ liệu trả về
     const formattedData = history.map(item => {
-      const song = item.track; // Lấy dữ liệu bài hát từ field 'track'
+      const song = item.track;
 
-      // Nếu bài hát đã bị xóa cứng khỏi database thì bỏ qua
       if (!song) return null;
 
       return {
-        historyId: item._id,           // ID của dòng lịch sử (để xóa lịch sử nếu cần)
-        _id: song._id,                 // ID của bài hát (quan trọng: Frontend player thường dùng _id)
-        
-        // Mapping dữ liệu hiển thị
+        historyId: item._id,
+        _id: song._id,
         title: song.title,
         artist: song.uploader?.username || "Unknown Artist",
-        imgUrl: song.imgUrl || "https://via.placeholder.com/150",
-        
-        // Format số lượng hiển thị
-        countPlay: (song.countPlay || 0).toLocaleString(),
-        countLike: (song.countLike || 0).toLocaleString(),
-        
-        // Thời gian nghe
+        imgUrl: song.imgUrl || "",
+        trackUrl: song.trackUrl,
+        countPlay: song.countPlay || 0,
+        countLike: song.countLike || 0,
         listenedAt: item.listenedAt
       };
-    }).filter(item => item !== null); // Loại bỏ các giá trị null
+    }).filter(item => item !== null);
 
-    // 4. Trả về kết quả
     res.status(200).json(formattedData);
 
   } catch (error) {
@@ -436,5 +433,54 @@ export const getPublicUser = async (req, res) => {
       message: err.message,
       data: null
     });
+  }
+};
+
+export const updateAvatar = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const targetId = req.params.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    if (userId.toString() !== targetId.toString()) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // delete old avatar
+    if (user.imgUrl && user.imgUrl !== "default_avatar.png") {
+      try {
+        const oldPath = path.join("images", user.imgUrl); // Sửa lại path cho khớp với cấu hình server
+        if (fs.existsSync(oldPath)) {
+          fs.unlinkSync(oldPath);
+        }
+      } catch (e) {
+        console.warn("Delete old avatar failed:", e.message);
+      }
+    }
+
+    user.imgUrl = req.file.filename;
+    await user.save();
+
+    res.json({
+      message: "Avatar updated successfully",
+      user: {
+        _id: user._id,
+        name: user.name,
+        imgUrl: user.imgUrl
+      }
+    });
+  } catch (err) {
+    console.error("updateAvatar error:", err);
+    res.status(500).json({ message: err.message });
   }
 };
