@@ -1,7 +1,9 @@
 // src/controllers/songController.js
-import Song from "../model/song.js";     // Nhớ thêm .js nếu dùng ES Modules
-import User from "../model/user.js";     // Import User model for population
+import Song from "../model/song.js";     
+import User from "../model/user.js";     
 import Comment from "../model/comment.js";
+import fs from "fs";
+import path from "path";
 
 // ============================================================
 // 🔽 PHẦN CODE CŨ (GIỮ NGUYÊN FORM)
@@ -10,7 +12,6 @@ import Comment from "../model/comment.js";
 export const getSongs = async (req, res) => {
     try {
         const data = await Song.find().populate("uploader", "_id name roles role");
-        // Return structure matching the user's image
         res.status(201).json({
             statusCode: 201,
             message: "Get All Track",
@@ -33,9 +34,6 @@ export const getSongById = async (req, res) => {
                 data: null
             });
         }
-        
-        // (Optional) Nếu muốn tăng view mỗi khi gọi chi tiết bài hát thì uncomment dòng dưới:
-        // await Song.findByIdAndUpdate(id, { $inc: { countPlay: 1 } });
 
         res.status(200).json({
             statusCode: 200,
@@ -72,10 +70,10 @@ export const addSong = async (req, res) => {
 };
 
 // ============================================================
-// 🔽 PHẦN CODE MỚI THÊM VÀO (UPLOAD, SEARCH, HOME, UPDATE)
+// 🔽 PHẦN CODE MỚI (UPLOAD, SEARCH, HOME, UPDATE, DELETE)
 // ============================================================
 
-// Helper: Hàm bỏ dấu tiếng Việt để tìm kiếm/lưu normalize
+// Helper: normalize text
 function normalizeText(str) {
     if (!str) return "";
     return str
@@ -87,44 +85,35 @@ function normalizeText(str) {
         .trim();
 }
 
-// 1. Lấy dữ liệu trang Home (Top bài hát mới nhất/hot nhất)
+// 1. Home Data
 export const getHomeData = async (req, res) => {
     try {
-        // Lấy 20 bài mới nhất
-        const data = await Song.find()
-            .sort({ createdAt: -1 })
-            .limit(20)
+        const data = await Song.find().sort({ createdAt: -1 }).limit(20)
             .populate("uploader", "_id name");
-
-        // Trả về đúng format mà Frontend đang mong đợi (thường là mảng trực tiếp hoặc object data)
-        // Nếu frontend dùng axios.get('/api/songs/home') mong đợi mảng:
         res.status(200).json(data); 
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-// 2. Upload Audio (Xử lý nhiều file)
+// 2. Upload Audio
 export const uploadSongs = async (req, res) => {
     try {
-        if (!req.files || req.files.length === 0) {
+        if (!req.files || req.files.length === 0)
             return res.status(400).json({ message: "Không có file nào được tải lên" });
-        }
 
         const songs = [];
-        // Giả lập ID user (hoặc lấy từ req.user._id nếu đã có middleware auth)
         const fakeUserId = "693d8f6d53bc79c243c10737"; 
 
         for (const f of req.files) {
             const baseName = f.originalname.replace(/\.[^/.]+$/, "");
-            
             const newSong = await Song.create({
-                title: baseName,                    // Tên bài hát lấy từ tên file
+                title: baseName,
                 title_normalized: normalizeText(baseName),
-                description: "Unknown Artist",      // Mặc định
-                category: "General",                // Mặc định
-                imgUrl: "",                         // Chưa có ảnh
-                trackUrl: f.filename,               // Lưu tên file nhạc vừa upload
+                description: "Unknown Artist",
+                category: "General",
+                imgUrl: "",
+                trackUrl: f.filename,
                 uploader: fakeUserId,
                 countLike: 0,
                 countPlay: 0
@@ -132,71 +121,56 @@ export const uploadSongs = async (req, res) => {
             songs.push(newSong);
         }
 
-        res.status(201).json({ 
-            statusCode: 201,
-            message: "Upload thành công", 
-            songs: songs // Trả về danh sách để frontend hiển thị form edit
-        });
+        res.status(201).json({ statusCode: 201, message: "Upload thành công", songs });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-// 3. Upload/Cập nhật Cover Image
+// 3. Update Cover
 export const updateCover = async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ message: "Thiếu file ảnh" });
-        
-        // Đường dẫn lưu vào DB (ví dụ: /uploads/covers/filename.jpg)
         const imgPath = `/uploads/covers/${req.file.filename}`;
-
-        const song = await Song.findByIdAndUpdate(
-            req.params.id,
-            { imgUrl: imgPath },
-            { new: true }
-        );
-
-        res.status(200).json({ 
-            message: "Cập nhật ảnh bìa thành công", 
-            song: song 
-        });
+        const song = await Song.findByIdAndUpdate(req.params.id, { imgUrl: imgPath }, { new: true });
+        res.status(200).json({ message: "Cập nhật ảnh bìa thành công", song });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-// 4. Cập nhật thông tin bài hát (Title, Artist, Genre)
+// 4. Update Song Info
 export const updateSongInfo = async (req, res) => {
     try {
-        const { title, description, category } = req.body;
+        const { title, description, category } = req.body || {};
         const updateData = { ...req.body };
 
-        // Cập nhật thêm trường normalized để search không dấu
+        if (req.files?.cover?.[0])
+            updateData.imgUrl = `/uploads/covers/${req.files.cover[0].filename}`;
+
+        if (req.files?.track?.[0])
+            updateData.trackUrl = req.files.track[0].filename;
+
         if (title) updateData.title_normalized = normalizeText(title);
         if (description) updateData.description_normalized = normalizeText(description);
 
         const song = await Song.findByIdAndUpdate(req.params.id, updateData, { new: true });
-        
-        res.status(200).json({ 
-            message: "Cập nhật thông tin thành công", 
-            song: song 
-        });
+
+        res.status(200).json({ message: "Cập nhật thông tin thành công", song });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-// 5. Chức năng Search (Tìm kiếm)
+// 5. Search Songs
 export const searchSongs = async (req, res) => {
     try {
         const q = req.query.q?.trim();
         if (!q) return res.json({ songs: [] });
 
         const regex = new RegExp(q, "i"); 
-        const keywordNormalized = normalizeText(q);
-        const regexNorm = new RegExp(keywordNormalized, "i");
+        const regexNorm = new RegExp(normalizeText(q), "i");
 
-        // Tìm trong title, description (artist), category
         const songs = await Song.find({
             $or: [
                 { title: { $regex: regex } },
@@ -206,9 +180,48 @@ export const searchSongs = async (req, res) => {
             ]
         });
 
-        // Trả về object songs để khớp với frontend SearchPage
-        res.json({ songs: songs }); 
+        res.json({ songs }); 
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+};
+
+// 6. Get Songs by Uploader
+export const getSongsByUploader = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const songs = await Song.find({ uploader: id, isDeleted: false }).sort({ createdAt: -1 });
+        res.json({ songs });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
+// 7. DELETE SONG (XÓA THẬT, xóa file track + cover)
+export const deleteSong = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const song = await Song.findById(id);
+        if (!song) return res.status(404).json({ message: "Song not found" });
+
+        // Xóa file track
+        if (song.trackUrl) {
+            const trackPath = path.join(process.cwd(), "filemp3", song.trackUrl);
+            if (fs.existsSync(trackPath)) fs.unlinkSync(trackPath);
+        }
+
+        // Xóa cover
+        if (song.imgUrl) {
+            const coverPath = path.join(process.cwd(), song.imgUrl);
+            if (fs.existsSync(coverPath)) fs.unlinkSync(coverPath);
+        }
+
+        // Xóa DB
+        await Song.findByIdAndDelete(id);
+
+        res.status(200).json({ statusCode: 200, message: "Song deleted successfully" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: err.message });
     }
 };

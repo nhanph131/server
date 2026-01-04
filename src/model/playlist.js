@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 const PlaylistSchema = new mongoose.Schema({
     title: {
         type: String,

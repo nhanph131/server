@@ -1,50 +1,222 @@
-// src/controllers/historyController.js
-import History from '../model/history.js'; 
-import Song from '../model/song.js';
-import User from '../model/user.js'; // Import User để populate hoạt động đúng (tùy chọn nhưng nên có)
+import User from "../model/user.js";
+import jwt from "jsonwebtoken";
+import Song from "../model/song.js";
+import Favorite from "../model/favorite.js";
+import Playlist from "../model/playlist.js";
+import History from "../model/history.js";
+import fs from "fs";
+import path from "path";
 
-export const getListeningHistory = async (req, res) => {
+/* ================= CHECK USERNAME ================= */
+
+export const checkUsername = async (req, res) => {
   try {
-    // 1. Tìm dữ liệu lịch sử
-    const history = await History.find()
-      .populate({
-        path: 'song_id', // Tên trường liên kết trong model History (lưu ý kiểm tra đúng tên này)
-        populate: { 
-          path: 'uploader', // Từ Song -> User để lấy tên ca sĩ
-          select: 'username' // Chỉ lấy trường username cho nhẹ
+    const { username } = req.query;
+    if (!username) {
+      return res.status(400).json({ message: "username is required" });
+    }
+
+    const user = await User.findOne({ username, isDeleted: false });
+    res.json({ exists: !!user });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* ================= REGISTER ================= */
+
+export const register = async (req, res) => {
+  try {
+    const { username, password, name } = req.body;
+
+    if (!username || !password || !name) {
+      return res.status(400).json({
+        message: "username, password, name are required"
+      });
+    }
+
+    const existing = await User.findOne({ username, isDeleted: false });
+    if (existing) {
+      return res.status(409).json({ message: "Username already exists" });
+    }
+
+    const user = await User.create({
+      username,
+      password,
+      name
+    });
+
+    res.status(201).json({
+      message: "Register success",
+      user
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};
+
+/* ================= LOGIN ================= */
+
+export const login = async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({
+        message: "username and password are required"
+      });
+    }
+
+    const user = await User.findOne({ username, isDeleted: false });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.password !== password) {
+      return res.status(401).json({ message: "Wrong password" });
+    }
+
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      return res.status(500).json({ message: "JWT_SECRET not configured" });
+    }
+
+    const token = jwt.sign(
+      { id: user._id, username: user.username, role: user.role },
+      secret,
+      { expiresIn: "1h" }
+    );
+
+    res.json({
+      message: "Login success",
+      user,
+      token
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* ================= CURRENT USER ================= */
+
+export const me = async (req, res) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const user = await User.findById(req.user.id).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json({ user });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* ================= USER STATS ================= */
+
+export const getUserStats = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const [uploadedCount, favoriteCount, playlistCount, user] =
+      await Promise.all([
+        Song.countDocuments({ uploader: userId, isDeleted: false }),
+        Favorite.countDocuments({ user: userId, isDeleted: false }),
+        Playlist.countDocuments({ user: userId, isDeleted: false }),
+        User.findById(userId).select("createdAt")
+      ]);
+
+    const createdAt = user?.createdAt
+      ? new Date(user.createdAt).getTime()
+      : Date.now();
+
+    const daysSinceCreated = Math.floor(
+      (Date.now() - createdAt) / 86400000
+    );
+
+    res.json({
+      uploadedCount,
+      favoriteCount,
+      playlistCount,
+      daysSinceCreated,
+      followedCount: 0
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* ================= PUBLIC USER ================= */
+
+export const getPublicUser = async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!id) {
+      return res.status(400).json({ message: "User id is required" });
+    }
+
+    const user = await User.findById(id).select(
+      "_id username name imgUrl role createdAt"
+    );
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json({ user });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* ================= UPDATE AVATAR ================= */
+
+export const updateAvatar = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const targetId = req.params.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    if (userId.toString() !== targetId.toString()) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // delete old avatar
+    if (user.imgUrl && user.imgUrl !== "default_avatar.png") {
+      try {
+        const oldPath = path.join("uploads/avatars", user.imgUrl);
+        if (fs.existsSync(oldPath)) {
+          fs.unlinkSync(oldPath);
         }
-      })
-      .sort({ createdAt: -1 }) // Sắp xếp mới nhất (hoặc đổi thành listened_at nếu model bạn dùng tên đó)
-      .limit(10); // Lấy 10 bài gần nhất
+      } catch (e) {
+        console.warn("Delete old avatar failed:", e.message);
+      }
+    }
 
-    // 2. Xử lý dữ liệu trả về cho Frontend
-    const formattedData = history.map(item => {
-      const song = item.song_id;
+    user.imgUrl = req.file.filename;
+    await user.save();
 
-      // Nếu bài hát đã bị xóa khỏi database thì bỏ qua dòng lịch sử này
-      if (!song) return null;
-
-      return {
-        id: item._id,          // ID của dòng lịch sử
-        songId: song._id,      // ID của bài hát
-        
-        // Mapping dữ liệu: DB (bên phải) -> Frontend (bên trái)
-        title: song.title,
-        artist: song.uploader?.username || "Unknown Artist", // Lấy tên user đăng bài
-        image: song.imgUrl || "https://via.placeholder.com/150", // Ảnh bìa (có fallback nếu lỗi)
-        
-        // Format số lượng (VD: 1000 -> "1,000")
-        plays: (song.countPlay || 0).toLocaleString(),
-        likes: (song.countLike || 0).toLocaleString(),
-        reposts: "0" // Mặc định vì DB chưa có trường này
-      };
-    }).filter(item => item !== null); // Loại bỏ các giá trị null
-
-    // 3. Trả về kết quả
-    res.status(200).json(formattedData);
-
-  } catch (error) {
-    console.error("Lỗi lấy lịch sử nghe:", error);
-    res.status(500).json({ message: "Lỗi Server khi lấy lịch sử nghe" });
+    res.json({
+      message: "Avatar updated successfully",
+      user: {
+        _id: user._id,
+        name: user.name,
+        imgUrl: user.imgUrl
+      }
+    });
+  } catch (err) {
+    console.error("updateAvatar error:", err);
+    res.status(500).json({ message: err.message });
   }
 };
