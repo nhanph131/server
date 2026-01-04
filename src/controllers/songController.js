@@ -2,6 +2,8 @@
 import Song from "../model/song.js";
 import User from "../model/user.js"; 
 import Comment from "../model/comment.js";
+import fs from "fs";
+import path from "path";
 
 // ============================================================
 // 🔽 PHẦN CODE CŨ (GET DATA)
@@ -58,8 +60,12 @@ export const getCommentsBySongId = async (req, res) => {
 
 export const getHomeData = async (req, res) => {
     try {
-        // Lấy danh sách bài hát mới nhất (hoặc random tùy logic)
-        const songs = await Song.find().sort({ createdAt: -1 }).limit(50);
+        // Lấy 50 bài mới nhất và populate uploader để hiển thị tên ca sĩ
+        const songs = await Song.find()
+            .sort({ createdAt: -1 })
+            .limit(50)
+            .populate("uploader", "_id name");
+            
         res.status(200).json(songs);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -94,9 +100,8 @@ function normalizeText(str) {
 // 2. Upload Audio (Xử lý nhiều file)
 export const uploadSongs = async (req, res) => {
     try {
-        if (!req.files || req.files.length === 0) {
+        if (!req.files || req.files.length === 0)
             return res.status(400).json({ message: "Không có file nào được tải lên" });
-        }
 
         const songs = [];
         // TODO: Sau này có Auth thì thay bằng req.user._id
@@ -105,7 +110,7 @@ export const uploadSongs = async (req, res) => {
         for (const f of req.files) {
             const baseName = f.originalname.replace(/\.[^/.]+$/, "");
             
-            // --- QUAN TRỌNG: Thêm tiền tố /filemp3/ vào DB ---
+            // --- QUAN TRỌNG: Thêm tiền tố /filemp3/ vào DB để Frontend play được ---
             const trackPath = `/filemp3/${f.filename}`;
 
             const newSong = await Song.create({
@@ -114,7 +119,7 @@ export const uploadSongs = async (req, res) => {
                 description: "Unknown Artist",
                 category: "General",
                 imgUrl: "", 
-                trackUrl: trackPath, // Lưu đường dẫn đầy đủ
+                trackUrl: trackPath, // Lưu đường dẫn đầy đủ (/filemp3/...)
                 uploader: fakeUserId,
                 countLike: 0,
                 countPlay: 0
@@ -132,12 +137,12 @@ export const uploadSongs = async (req, res) => {
     }
 };
 
-// 3. Upload/Cập nhật Cover Image
+// 3. Update Cover
 export const updateCover = async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ message: "Thiếu file ảnh" });
         
-        // --- QUAN TRỌNG: Lưu vào folder images (khớp với router và app.js) ---
+        // --- QUAN TRỌNG: Lưu vào folder images để Frontend hiển thị được ---
         const imgPath = `/images/${req.file.filename}`;
 
         const song = await Song.findByIdAndUpdate(
@@ -155,7 +160,7 @@ export const updateCover = async (req, res) => {
     }
 };
 
-// 4. Cập nhật thông tin bài hát (Title, Artist, Genre)
+// 4. Update Song Info (Chỉ update text, không xử lý file ở đây)
 export const updateSongInfo = async (req, res) => {
     try {
         const { title, description } = req.body;
@@ -165,25 +170,21 @@ export const updateSongInfo = async (req, res) => {
         if (description) updateData.description_normalized = normalizeText(description);
 
         const song = await Song.findByIdAndUpdate(req.params.id, updateData, { new: true });
-        
-        res.status(200).json({ 
-            message: "Cập nhật thông tin thành công", 
-            song: song 
-        });
+
+        res.status(200).json({ message: "Cập nhật thông tin thành công", song });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-// 5. Chức năng Search (Nếu bạn dùng searchRouter riêng thì hàm này có thể import vào đó)
+// 5. Search Songs
 export const searchSongs = async (req, res) => {
     try {
         const q = req.query.q?.trim();
         if (!q) return res.json({ songs: [] });
 
         const regex = new RegExp(q, "i"); 
-        const keywordNormalized = normalizeText(q);
-        const regexNorm = new RegExp(keywordNormalized, "i");
+        const regexNorm = new RegExp(normalizeText(q), "i");
 
         const songs = await Song.find({
             $or: [
@@ -197,5 +198,47 @@ export const searchSongs = async (req, res) => {
         res.json({ songs: songs }); 
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+};
+
+// 6. Get Songs by Uploader
+export const getSongsByUploader = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const songs = await Song.find({ uploader: id, isDeleted: false }).sort({ createdAt: -1 });
+        res.json({ songs });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
+// 7. DELETE SONG (XÓA THẬT, xóa file track + cover)
+export const deleteSong = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const song = await Song.findById(id);
+        if (!song) return res.status(404).json({ message: "Song not found" });
+
+        // Xử lý đường dẫn để xóa file vật lý
+        // Vì trong DB lưu dạng "/filemp3/abc.mp3", ta cần bỏ dấu "/" đầu tiên đi để path.join hoạt động đúng từ root
+        if (song.trackUrl) {
+            const relativePath = song.trackUrl.startsWith('/') ? song.trackUrl.substring(1) : song.trackUrl;
+            const trackPath = path.join(process.cwd(), relativePath);
+            if (fs.existsSync(trackPath)) fs.unlinkSync(trackPath);
+        }
+
+        if (song.imgUrl) {
+            const relativePath = song.imgUrl.startsWith('/') ? song.imgUrl.substring(1) : song.imgUrl;
+            const coverPath = path.join(process.cwd(), relativePath);
+            if (fs.existsSync(coverPath)) fs.unlinkSync(coverPath);
+        }
+
+        // Xóa DB
+        await Song.findByIdAndDelete(id);
+
+        res.status(200).json({ statusCode: 200, message: "Song deleted successfully" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: err.message });
     }
 };

@@ -1,7 +1,48 @@
-import express from 'express';
-import { User } from '../model/user.js'; // Nhớ import model User của bạn
+import express from "express";
+import User from "../model/user.js";
+import { uploadAvatar } from "../middleware/uploadAvatar.js";
+import {
+  login,
+  register,
+  checkUsername,
+  me,
+  getUserStats,
+  getPublicUser,
+  updateAvatar,
+} from "../controllers/userController.js";
+import { verifyToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
+
+/* ================= AUTH ================= */
+
+// login
+router.post("/login", login);
+
+// register
+router.post("/register", register);
+
+// check username
+router.get("/check-username", checkUsername);
+
+// current user
+router.get("/me", verifyToken, me);
+
+// user stats
+router.get("/stats", verifyToken, getUserStats);
+
+// public user profile  
+router.get("/:id", getPublicUser);
+
+// update avatar 
+router.put(
+  "/:id/avatar",
+  verifyToken,
+  uploadAvatar.single("avatar"),
+  updateAvatar
+);
+
+/* ============== ADMIN / CRUD ============== */
 
 // 1. GET ALL USERS (Để hiển thị lên bảng Admin)
 router.get('/users', async (req, res) => {
