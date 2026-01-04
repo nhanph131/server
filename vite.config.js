@@ -7,6 +7,14 @@ export default defineConfig({
     // vite server configs, for details see [vite doc](https://vitejs.dev/config/#server-host)
     port: 8080
   },
+  optimizeDeps: {
+    exclude: ['mongoose', 'mongodb', 'bson'] // Bắt Vite bỏ qua các thư viện này
+  },
+  build: {
+    rollupOptions: {
+        external: ['mongoose', 'mongodb', 'bson'] // Không đóng gói chúng khi build
+    }
+  },
   plugins: [
     ...VitePluginNode({
       // Nodejs native Request adapter

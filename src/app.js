@@ -1,18 +1,18 @@
 import express from "express";
-import cors from "cors";
-import cookieParser from "cookie-parser";
-import path from "path";
 import dotenv from "dotenv";
+import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
-
 import { connectDB } from "./config/db.js";
+
+// Import các Router
 import songRouter from "./router/songRouter.js";
 import historyRouter from "./router/historyRouter.js";
 import homeRouter from "./router/homeRouter.js";
+import searchRouter from "./router/searchRouter.js"; // Sửa lỗi backend crash
+import userRouter from "./router/userRouter.js";
 import commentRouter from "./router/commentRouter.js";
 import authRouter from "./router/authRouter.js";
-import userRouter from "./router/userRouter.js";
 import libraryRouter from "./router/libraryRouter.js";
 import followRouter from "./router/followRouter.js";
 const __filename = fileURLToPath(import.meta.url);
@@ -42,6 +42,11 @@ app.use("/api/follow", followRouter);
 // app.use("/api/auth", authRouter);
 
 // file mp3
-app.use("/track", express.static(path.join(__dirname, "../filemp3")));
+app.use('/api', searchRouter);
+// app.use("/api", userRouter);
+
+// Static files
+app.use('/track', express.static(path.join(__dirname, '../filemp3')));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 export const viteNodeApp = app;

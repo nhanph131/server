@@ -21,15 +21,12 @@ export const getSongs = async (req, res) => {
         });
     }
 };
-// export const getProductById = (req, res) => {
-//     res.send("Hello World!");
-// };
 
 export const getSongById = async (req, res) => {
     try {
         const { id } = req.params;
         const data = await Song.findById(id).populate("uploader", "_id name roles role");
-        
+
         if (!data) {
             return res.status(404).json({
                 statusCode: 404,
@@ -37,6 +34,9 @@ export const getSongById = async (req, res) => {
                 data: null
             });
         }
+        
+        // (Optional) Nếu muốn tăng view mỗi khi gọi chi tiết bài hát thì uncomment dòng dưới:
+        // await Song.findByIdAndUpdate(id, { $inc: { countPlay: 1 } });
 
         res.status(200).json({
             statusCode: 200,
@@ -173,4 +173,155 @@ export const unlikeSong = async (req, res) => {
         data: null
     });
   }
+};
+
+// ============================================================
+// 🔽 PHẦN CODE MỚI THÊM VÀO (UPLOAD, SEARCH, HOME, UPDATE)
+// ============================================================
+
+// Helper: Hàm bỏ dấu tiếng Việt để tìm kiếm/lưu normalize
+function normalizeText(str) {
+    if (!str) return "";
+    return str
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/đ/g, "d")
+        .replace(/Đ/g, "D")
+        .toLowerCase()
+        .trim();
+}
+
+// 2. Upload Audio (Xử lý nhiều file)
+export const uploadSongs = async (req, res) => {
+    try {
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({ message: "Không có file nào được tải lên" });
+        }
+
+        const songs = [];
+        // Giả lập ID user (hoặc lấy từ req.user._id nếu đã có middleware auth)
+        const fakeUserId = "693d8f6d53bc79c243c10737"; 
+
+        for (const f of req.files) {
+            const baseName = f.originalname.replace(/\.[^/.]+$/, "");
+            
+            const newSong = await Song.create({
+                title: baseName,                    // Tên bài hát lấy từ tên file
+                title_normalized: normalizeText(baseName),
+                description: "Unknown Artist",      // Mặc định
+                category: "General",                // Mặc định
+                imgUrl: "",                         // Chưa có ảnh
+                trackUrl: f.filename,               // Lưu tên file nhạc vừa upload
+                uploader: fakeUserId,
+                countLike: 0,
+                countPlay: 0
+            });
+            songs.push(newSong);
+        }
+
+        res.status(201).json({ 
+            statusCode: 201,
+            message: "Upload thành công", 
+            data: songs 
+        });
+    } catch (error) {
+        res.status(500).json({
+            statusCode: 500,
+            message: error.message,
+            data: null
+        });
+    }
+};
+
+// 3. Upload/Cập nhật Cover Image
+export const updateCover = async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ message: "Thiếu file ảnh" });
+        
+        // Đường dẫn lưu vào DB (ví dụ: /uploads/covers/filename.jpg)
+        const imgPath = `/uploads/covers/${req.file.filename}`;
+
+        const song = await Song.findByIdAndUpdate(
+            req.params.id,
+            { imgUrl: imgPath },
+            { new: true }
+        );
+
+        res.status(200).json({ 
+            statusCode: 200,
+            message: "Cập nhật ảnh bìa thành công", 
+            data: song 
+        });
+    } catch (error) {
+        res.status(500).json({
+            statusCode: 500,
+            message: error.message,
+            data: null
+        });
+    }
+};
+
+// 4. Cập nhật thông tin bài hát (Title, Artist, Genre)
+export const updateSongInfo = async (req, res) => {
+    try {
+        const { title, description, category } = req.body;
+        const updateData = { ...req.body };
+
+        // Cập nhật thêm trường normalized để search không dấu
+        if (title) updateData.title_normalized = normalizeText(title);
+        if (description) updateData.description_normalized = normalizeText(description);
+
+        const song = await Song.findByIdAndUpdate(req.params.id, updateData, { new: true });
+        
+        res.status(200).json({ 
+            statusCode: 200,
+            message: "Cập nhật thông tin thành công", 
+            data: song 
+        });
+    } catch (error) {
+        res.status(500).json({
+            statusCode: 500,
+            message: error.message,
+            data: null
+        });
+    }
+};
+
+// 5. Chức năng Search (Tìm kiếm)
+export const searchSongs = async (req, res) => {
+    try {
+        const q = req.query.q?.trim();
+        if (!q) return res.status(200).json({
+            statusCode: 200,
+            message: "Search Success",
+            data: []
+        });
+
+        const regex = new RegExp(q, "i"); 
+        const keywordNormalized = normalizeText(q);
+        const regexNorm = new RegExp(keywordNormalized, "i");
+
+        // Tìm trong title, description (artist), category
+        const songs = await Song.find({
+            $or: [
+                { title: { $regex: regex } },
+                { description: { $regex: regex } }, 
+                { category: { $regex: regex } },
+                { title_normalized: { $regex: regexNorm } }
+            ]
+        });
+
+        // Trả về object songs để khớp với frontend SearchPage
+        res.status(200).json({
+            statusCode: 200,
+            message: "Search Success",
+            data: songs
+        }); 
+    } catch (error) {
+        res.status(500).json({
+            statusCode: 500,
+            message: error.message,
+            data: null
+        });
+    }
 };
