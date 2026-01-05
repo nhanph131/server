@@ -211,15 +211,23 @@ export const uploadSongs = async (req, res) => {
         const songs = [];
         
         // --- SỬA 1: Logic lấy User ID ---
-        // Nếu đã đăng nhập (có req.user) thì lấy ID thật, nếu không thì dùng ID giả
-        const userId = req.user && req.user._id ? req.user._id : "693d8f6d53bc79c243c10737"; 
+        // Bắt buộc phải có token (đã qua middleware verifyToken)
+        const userId = req.user?.id || req.user?._id;
+        
+        if (!userId) {
+            return res.status(401).json({
+                statusCode: 401,
+                message: "Unauthorized: User ID not found",
+                data: null
+            });
+        } 
 
         for (const f of req.files) {
             const baseName = f.originalname.replace(/\.[^/.]+$/, "");
             
-            // --- SỬA 2: Đổi /filemp3/ thành /track/ ---
-            // Vì app.js khai báo: app.use('/track', express.static...)
-            const trackPath = `/track/${f.filename}`;
+            // --- SỬA 2: Chỉ lưu tên file ---
+            // Frontend sẽ tự ghép đường dẫn nếu cần, hoặc cấu hình static path
+            const trackPath = f.filename;
 
             const newSong = await Song.create({
                 title: baseName,
@@ -228,11 +236,11 @@ export const uploadSongs = async (req, res) => {
                 description: "Unknown Artist",
                 category: "General",
                 imgUrl: "", 
-                trackUrl: trackPath, // ✅ Lưu đúng đường dẫn này thì Frontend mới play được
+                trackUrl: trackPath, 
                 uploader: userId,
                 countLike: 0,
                 countPlay: 0,
-                duration: 0 // Nên thêm trường này (mặc định 0), sau này update sau
+                duration: 0 
             });
             songs.push(newSong);
         }
@@ -377,9 +385,19 @@ export const deleteSong = async (req, res) => {
         if (!song) return res.status(404).json({ message: "Song not found" });
 
         // Xử lý đường dẫn để xóa file vật lý
-        // Vì trong DB lưu dạng "/filemp3/abc.mp3", ta cần bỏ dấu "/" đầu tiên đi để path.join hoạt động đúng từ root
         if (song.trackUrl) {
-            const relativePath = song.trackUrl.startsWith('/') ? song.trackUrl.substring(1) : song.trackUrl;
+            let relativePath = song.trackUrl.startsWith('/') ? song.trackUrl.substring(1) : song.trackUrl;
+            
+            // Nếu đường dẫn bắt đầu bằng 'track/' hoặc 'filemp3/' thì giữ nguyên logic cũ (có thể cần thay đổi mapping tùy cấu trúc folder)
+            // Nếu chỉ là tên file thì thêm 'filemp3/' vào trước
+            if (relativePath.startsWith('track/')) {
+                // Map /track/abc.mp3 -> filemp3/abc.mp3
+                relativePath = relativePath.replace('track/', 'filemp3/');
+            } else if (!relativePath.includes('/') && !relativePath.startsWith('filemp3/')) {
+                // Chỉ có tên file -> filemp3/filename
+                relativePath = `filemp3/${relativePath}`;
+            }
+
             const trackPath = path.join(process.cwd(), relativePath);
             if (fs.existsSync(trackPath)) fs.unlinkSync(trackPath);
         }

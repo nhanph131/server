@@ -87,7 +87,7 @@ songRouter.get("/user/:id/songs", getSongsByUploader); // API Matches: /api/user
 
 // --- UPLOAD Routes ---
 // Upload nhiều file nhạc
-songRouter.post("/upload", uploadAudio.array("files", 10), uploadSongs);
+songRouter.post("/upload", verifyToken, uploadAudio.array("files", 10), uploadSongs);
 
 // Upload ảnh bìa (Cover) cho 1 bài hát
 songRouter.post("/songs/:id/cover", uploadImage.single("cover"), updateCover);
