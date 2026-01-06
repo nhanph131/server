@@ -41,7 +41,7 @@ router.get("/public/:id", verifyToken, getPublicUser);
 const avatarStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     // Từ src/router lùi ra root -> vào folder images
-    const dir = path.join(__dirname, "../../images"); 
+    const dir = path.join(__dirname, "../../images/avatar");
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },

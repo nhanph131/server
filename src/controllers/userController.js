@@ -4,6 +4,8 @@ import Song from "../model/song";
 import Favorite from "../model/favorite";
 import Playlist from "../model/playlist";
 import History from "../model/history";
+import fs from "fs";
+import path from "path";
 
 // Check username availability
 export const checkUsername = async (req, res) => {
@@ -129,6 +131,7 @@ export const login = async (req, res) => {
       data: {
         user: {
           _id: user._id,
+          username: user.username,
           imgUrl: user.imgUrl,
           name: user.name,
           role: user.role
@@ -172,6 +175,7 @@ export const me = async (req, res) => {
       data: { 
         user: {
           _id: user._id,
+          username: user.username,
           imgUrl: user.imgUrl,
           name: user.name,
           role: user.role
@@ -459,7 +463,7 @@ export const updateAvatar = async (req, res) => {
     // delete old avatar
     if (user.imgUrl && user.imgUrl !== "default_avatar.png") {
       try {
-        const oldPath = path.join("images", user.imgUrl); // Sửa lại path cho khớp với cấu hình server
+        const oldPath = path.join("images", "avatar", user.imgUrl);
         if (fs.existsSync(oldPath)) {
           fs.unlinkSync(oldPath);
         }
