@@ -23,7 +23,7 @@ dotenv.config();
 const app = express();
 
 
-app.use(express.json());
+app.use(express.json()); 
 
 
 // Connect to MongoDB
@@ -50,6 +50,7 @@ app.use('/api', searchRouter);
 // Static files
 app.use('/track', express.static(path.join(__dirname, '../filemp3')));
 app.use('/images', express.static(path.join(__dirname, '../images')));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 
 export const viteNodeApp = app;
